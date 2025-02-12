@@ -250,8 +250,8 @@ fn extract_ical_content(text: &str) -> Option<String> {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     env_logger::init();
-
-    let addr = SocketAddr::from(([127, 0, 0, 1], 22137));
+    let port = env::var("PORT").unwrap_or_else(|_| "8080".to_string()).parse::<u16>().unwrap();
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
 
     let listener = TcpListener::bind(addr).await?;
     log::info!("We up on http://{}", addr);
