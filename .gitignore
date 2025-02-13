@@ -2,3 +2,4 @@
 *.ics
 .env
 
+sel2ics/target/
