@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "sel2ical",
+  "version": "1.0",
+  "description": "Creates .ics calendar invites from selected text",
+  "icons": {
+    "48": "icon48.png",
+    "64": "icon64.png",
+    "128": "icon128.png",
+    "256": "icon256.png"
+  },
+  "permissions": [
+    "contextMenus",
+    "tabs",
+    "downloads"
+  ],
+  "host_permissions": [
+    "https://cal.chmod.site/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  }
+}
