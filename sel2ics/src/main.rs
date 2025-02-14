@@ -1,5 +1,4 @@
-use chrono::{DateTime, Utc, TimeZone, NaiveDateTime};
-use chrono_tz::Tz;
+use chrono::{Utc, NaiveDateTime};
 use http_body_util::BodyExt;
 use hyper::service::service_fn;
 use hyper::{Method, Request, Response, StatusCode};
@@ -64,7 +63,12 @@ struct IcalEventJson {
 }
 
 impl IcalEventJson {
-    /// parse from json. start_time is required. name and end time are inferred if missing. end_time, location and timezones left blank if missing
+    /// parse from json
+    /// start_time is required
+    /// name and end time are inferred if missing
+    /// end_time, location and timezones left blank if missing
+    /// if end_time is present but fails to parse, we error out
+    /// if either time_zone is present but fails to parse, we leave them blank
     fn parse(&self) -> anyhow::Result<IcalEvent> {
         use std::str::FromStr;
         
@@ -77,11 +81,22 @@ impl IcalEventJson {
             .map_err(|e| anyhow::anyhow!("Failed to parse start time: {}", e))?
             .ok_or_else(|| anyhow::anyhow!("start_time is required"))?;
 
+
+        // Matt wouldn't say anything about this
+        // Jake would call it "convoluted functional crap"
+        // for Travis it's not convoluted enough
+        // who is right?
         let start_time_zone = self.start_time_zone
             .as_ref()
-            .map(|tz| chrono_tz::Tz::from_str(tz))
+            .map(|tz| {
+                chrono_tz::Tz::from_str(tz).map_err(|e| {
+                    log::warn!("Invalid timezone '{}': {}", tz, e);
+                    e
+                })
+            })
             .transpose()
-            .map_err(|e| anyhow::anyhow!("Failed to parse start timezone: {}", e))?;
+            .ok()
+            .flatten();
 
         let end_time = self.end_time
             .as_ref()
@@ -92,9 +107,15 @@ impl IcalEventJson {
 
         let end_time_zone = self.end_time_zone
             .as_ref()
-            .map(|tz| chrono_tz::Tz::from_str(tz))
+            .map(|tz| {
+                chrono_tz::Tz::from_str(tz).map_err(|e| {
+                    log::warn!("Invalid timezone '{}': {}", tz, e);
+                    e
+                })
+            })
             .transpose()
-            .map_err(|e| anyhow::anyhow!("Failed to parse end timezone: {}", e))?;
+            .ok()
+            .flatten();
 
         let location = self.location.clone();
 
@@ -125,8 +146,8 @@ impl IcalEvent {
         let mut output = String::new();
         output.push_str("BEGIN:VEVENT\r\n");
         output.push_str(&format!("SUMMARY:{}\r\n", self.name));
-        output.push_str(&format!("DTSTART:{}\r\n", to_ical_ts(&self.start_time, &self.start_time_zone)));
-        output.push_str(&format!("DTEND:{}\r\n", to_ical_ts(&self.end_time, &self.end_time_zone)));
+        output.push_str(&format!("DTSTART{}\r\n", to_ical_ts(&self.start_time, &self.start_time_zone)));
+        output.push_str(&format!("DTEND{}\r\n", to_ical_ts(&self.end_time, &self.end_time_zone)));
 
         if let Some(location) = self.location.clone() {
             output.push_str(&format!("LOCATION:{}\r\n", location));
@@ -143,11 +164,10 @@ impl IcalEvent {
 }
 
 fn to_ical_ts(t: &chrono::NaiveDateTime, z: &Option<chrono_tz::Tz>) -> String {
-    // if we know the tz, specify it explicitly as in DTSTART;TZID=America/New_York:20250212T150000
-    // if we do not know the tz, use the "floating" format as in DTSTART:20250212T150000
-    // the latter makes the calendar app use ther users's local timezone
-    let tzid = z.map(|z| format!("TZID={}:", z.name()));
-    format!("{}{}", tzid.unwrap_or("".to_owned()), t.format("%Y%m%dT%H%M%S").to_string())
+    match z {
+        Some(tz) => format!(";TZID={}:{}", tz.name(), t.format("%Y%m%dT%H%M%S")),
+        None => format!(":{}", t.format("%Y%m%dT%H%M%S")),
+    }
 }
 
 fn build_llm_request(text: &str) -> LlmRequest {
@@ -249,12 +269,15 @@ async fn route(
             let body_bytes = req.collect().await.unwrap().to_bytes();
             let calendar_request: CalendarRequest = serde_json::from_slice(&body_bytes).unwrap();
             match handle_ical(calendar_request).await {
-                Ok(ical_event_str) =>  Ok(Response::builder()
-                .status(StatusCode::OK)
-                .body(ical_event_str)
-                .unwrap()),
+                Ok(ical_event_str) =>  { 
+                    log::info!("ok: {ical_event_str:?}");
+                    Ok(Response::builder()
+                    .status(StatusCode::OK)
+                    .body(ical_event_str)
+                    .unwrap())
+                }
                 Err(e) => {
-                    log::error!("Calendar request failed: {}", e);
+                    log::error!("fail: {}", e);
                     Ok(Response::builder()
                     .status(StatusCode::BAD_REQUEST)
                     .body(format!("Failed to process calendar request: {}", e))
@@ -340,8 +363,8 @@ mod tests {
         let result = full_event.to_ics();
         assert!(result.contains("BEGIN:VEVENT"));
         assert!(result.contains("SUMMARY:Team Meeting"));
-        assert!(result.contains("DTSTART:TZID=America/New_York:20240315T143000"));
-        assert!(result.contains("DTEND:TZID=America/New_York:20240315T153000"));
+        assert!(result.contains("DTSTART;TZID=America/New_York:20240315T143000"));
+        assert!(result.contains("DTEND;TZID=America/New_York:20240315T153000"));
         assert!(result.contains("LOCATION:Conference Room A"));
         assert!(result.contains("END:VEVENT"));
         assert!(result.contains("UID:")); // Should contain a UUID
@@ -357,5 +380,39 @@ mod tests {
         assert_eq!(ical_event.name, "Underworld");
         assert_eq!(ical_event.start_time, NaiveDateTime::parse_from_str("2025-05-20 20:00:00", "%Y-%m-%d %H:%M:%S").unwrap());
         assert_eq!(ical_event.location, Some("Showbox SoDo, Seattle, WA".to_string()));
+    }
+
+    #[test]
+    fn ical_malformed_time() {
+        // test that when start_time or end_time are not valid dates, IcalEventJson.parse() returns an error
+        let bad_start_time = LlmResponseUnwrapped { ical_as_json: r#"{"start_time": "not a date"}"#.to_owned() };
+        let bad_start_time_json: IcalEventJson = serde_json::from_str(&bad_start_time.ical_as_json).unwrap();
+        assert!(bad_start_time_json.parse().is_err());
+
+        let bad_end_time = LlmResponseUnwrapped { ical_as_json: r#"{"start_time": "2024-03-15 14:30:00", "end_time": "invalid"}"#.to_owned() };
+        let bad_end_time_json: IcalEventJson = serde_json::from_str(&bad_end_time.ical_as_json).unwrap();
+        assert!(bad_end_time_json.parse().is_err());
+    }
+
+    #[test]
+    fn ical_malformed_time_zone() {
+        // test that when start_time_zone or end_time_zone are not valid timezones, IcalEventJson.parse() prints and error and omits them
+        let bad_start_tz = LlmResponseUnwrapped { ical_as_json: r#"{"start_time": "2024-03-15 14:30:00", "start_time_zone": "Hyperborea/Lemuria", "end_time": "2024-03-15 15:30:00", "end_time_zone": "America/New_York"}"#.to_owned() };
+        let bad_start_tz_json: IcalEventJson = serde_json::from_str(&bad_start_tz.ical_as_json).unwrap();
+        let ical_event = bad_start_tz_json.parse().unwrap();
+        assert!(ical_event.start_time_zone.is_none());
+        assert_eq!(ical_event.end_time_zone, Some(chrono_tz::America::New_York));
+
+        let bad_end_tz = LlmResponseUnwrapped { ical_as_json: r#"{"start_time": "2024-03-15 14:30:00", "start_time_zone": "America/New_York", "end_time": "2024-03-15 15:30:00", "end_time_zone": "Atlantis/Mu"}"#.to_owned() };
+        let bad_end_tz_json: IcalEventJson = serde_json::from_str(&bad_end_tz.ical_as_json).unwrap();
+        let ical_event = bad_end_tz_json.parse().unwrap();
+        assert_eq!(ical_event.start_time_zone, Some(chrono_tz::America::New_York));
+        assert!(ical_event.end_time_zone.is_none());
+
+        let both_bad_tz = LlmResponseUnwrapped { ical_as_json: r#"{"start_time": "2024-03-15 14:30:00", "start_time_zone": "Hyperborea/Lemuria", "end_time": "2024-03-15 15:30:00", "end_time_zone": "Atlantis/Mu"}"#.to_owned() };
+        let both_bad_tz_json: IcalEventJson = serde_json::from_str(&both_bad_tz.ical_as_json).unwrap();
+        let ical_event = both_bad_tz_json.parse().unwrap();
+        assert!(ical_event.start_time_zone.is_none());
+        assert!(ical_event.end_time_zone.is_none());
     }
 }
