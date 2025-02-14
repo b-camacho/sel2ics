@@ -11,7 +11,6 @@
   },
   "permissions": [
     "contextMenus",
-    "tabs",
     "downloads"
   ],
   "host_permissions": [
