@@ -144,21 +144,22 @@ struct IcalEvent {
 impl IcalEvent {
     fn to_ics(&self) -> String {
         let mut output = String::new();
+        output.push_str("BEGIN:VCALENDAR\r\n");
+        output.push_str("VERSION:2.0\r\n");
+        output.push_str("PRODID:-//UnemployedLucia//sel2ics//EN\r\n");
         output.push_str("BEGIN:VEVENT\r\n");
         output.push_str(&format!("SUMMARY:{}\r\n", self.name));
         output.push_str(&format!("DTSTART{}\r\n", to_ical_ts(&self.start_time, &self.start_time_zone)));
         output.push_str(&format!("DTEND{}\r\n", to_ical_ts(&self.end_time, &self.end_time_zone)));
-
         if let Some(location) = self.location.clone() {
             output.push_str(&format!("LOCATION:{}\r\n", location));
         }
 
         // silly protocol stuff
         output.push_str(&format!("UID:{}\r\n", Uuid::new_v4()));
-        output.push_str(&format!("DTSTAMP{}\r\n", to_ical_ts(&Utc::now().naive_utc(), &None)));
-        output.push_str("PRODID:-//UnemployedLucia//sel2ics//EN\r\n");
-
         output.push_str("END:VEVENT\r\n");
+        output.push_str("END:VCALENDAR\r\n");
+
         output
     }
 }
@@ -368,7 +369,6 @@ mod tests {
         assert!(result.contains("LOCATION:Conference Room A"));
         assert!(result.contains("END:VEVENT"));
         assert!(result.contains("UID:")); // Should contain a UUID
-        assert!(Regex::new(r"DTSTAMP:\d{8}T\d{6}").unwrap().is_match(&result)); // Should contain a timestamp in format YYYYMMDDTHHMMSS
         assert!(result.contains("PRODID:-//UnemployedLucia//sel2ics//EN"));
     }
 
