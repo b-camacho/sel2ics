@@ -155,7 +155,7 @@ impl IcalEvent {
 
         // silly protocol stuff
         output.push_str(&format!("UID:{}\r\n", Uuid::new_v4()));
-        output.push_str(&format!("DTSTAMP:{}\r\n", to_ical_ts(&Utc::now().naive_utc(), &None)));
+        output.push_str(&format!("DTSTAMP{}\r\n", to_ical_ts(&Utc::now().naive_utc(), &None)));
         output.push_str("PRODID:-//UnemployedLucia//sel2ics//EN\r\n");
 
         output.push_str("END:VEVENT\r\n");
@@ -368,7 +368,7 @@ mod tests {
         assert!(result.contains("LOCATION:Conference Room A"));
         assert!(result.contains("END:VEVENT"));
         assert!(result.contains("UID:")); // Should contain a UUID
-        assert!(result.contains("DTSTAMP:")); // Should contain a timestamp
+        assert!(Regex::new(r"DTSTAMP:\d{8}T\d{6}").unwrap().is_match(&result)); // Should contain a timestamp in format YYYYMMDDTHHMMSS
         assert!(result.contains("PRODID:-//UnemployedLucia//sel2ics//EN"));
     }
 
