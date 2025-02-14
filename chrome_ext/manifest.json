@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "sel2ical",
-  "version": "1.0",
+  "version": "0.1",
   "description": "Creates .ics calendar invites from selected text",
   "icons": {
     "48": "icon48.png",
