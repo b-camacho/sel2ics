@@ -1,5 +1,6 @@
 *.xpi
 *.ics
 .env
-
 sel2ics/target/
+chrome_ext.crx
+chrome_ext.pem
