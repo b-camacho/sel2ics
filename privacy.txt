@@ -1,0 +1,21 @@
+Privacy Policy for sel2ical
+
+Last Updated: February 14, 2025
+
+This privacy policy describes how sel2ical ("we", "our", or "the extension") handles information.
+
+Data Collection
+Our extension does not collect, store, or transmit any personal information or user data. We do not:
+- Track your browsing activity
+- Store any personal information
+- Use cookies or similar tracking technologies
+- Share any information with third parties
+
+Permissions
+The extension only requires minimal permissions necessary for its core functionality. These permissions are used solely for the extension's stated purpose and do not involve data collection.
+
+Changes to This Policy
+We may update this privacy policy from time to time. We will notify users of any changes by updating the "Last Updated" date of this policy.
+
+Contact
+If you have any questions about this privacy policy, please contact lucia3e8@gmail.com.
